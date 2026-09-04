@@ -10,7 +10,7 @@ workflows:
           flutter create --platforms=android --org com.gkshoecare .
       - name: Add camera permission
         script: |
-          sed -i '/<application/i\    <uses-permission android:name="android.permission.CAMERA" />' android/app/src/main/AndroidManifest.xml
+          perl -i -pe 's|<application|    <uses-permission android:name="android.permission.CAMERA" />\n    <application|' android/app/src/main/AndroidManifest.xml
       - name: Get packages
         script: |
           flutter pub get
