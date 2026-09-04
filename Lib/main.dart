@@ -15,7 +15,53 @@ class GKShoecareApp extends StatelessWidget {
     return MaterialApp(
       title: 'GK Shoecare',
       theme: ThemeData(useMaterial3: true),
-      home: const PilihJenisBarangPage(),
+      home: const SplashPage(),
+    );
+  }
+}
+
+class SplashPage extends StatelessWidget {
+  const SplashPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    const double lebar = 260;
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5B315),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: lebar,
+              child: Image.asset('assets/logo.png'),
+            ),
+            const SizedBox(height: 32),
+            SizedBox(
+              width: lebar,
+              height: 52,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.black,
+                  foregroundColor: const Color(0xFFF5B315),
+                  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                  elevation: 0,
+                ),
+                onPressed: () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (context) => const PilihJenisBarangPage()),
+                  );
+                },
+                child: const Text(
+                  'MULAI TREATMENT',
+                  style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
