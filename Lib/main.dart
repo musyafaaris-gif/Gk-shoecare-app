@@ -39,30 +39,72 @@ class TreatmentOption {
   const TreatmentOption(this.nama, this.harga, this.estimasiHari);
 }
 
-const List<TreatmentOption> daftarTreatment = [
-  TreatmentOption('Fast Cleaning', 25000, 2),
-  TreatmentOption('Deep Cleaning', 35000, 4),
-  TreatmentOption('Heels/Flat Shoes/Sandal/Kid Shoes', 25000, 3),
-  TreatmentOption('Leather Shoes Care', 40000, 4),
-  TreatmentOption('Suede Shoes Care', 40000, 3),
-  TreatmentOption('Unyellowing', 40000, 5),
-  TreatmentOption('Unyellowing + Deep Cleaning', 70000, 5),
-  TreatmentOption('Express', 70000, 1),
-  TreatmentOption('Carrier', 60000, 5),
-  TreatmentOption('Hat Repaint (1 warna)', 90000, 5),
+const List<String> jenisBarangList = [
+  'Sepatu Dewasa',
+  'Sepatu Anak',
+  'Sandal (Wanita/Gunung/Flat Shoes)',
+  'Topi',
+  'Tas Wanita',
+  'Backpack/Carrier/Tas Olahraga',
 ];
+
+const Map<String, List<TreatmentOption>> treatmentPerJenis = {
+  'Sepatu Dewasa': [
+    TreatmentOption('Fast Cleaning', 25000, 2),
+    TreatmentOption('Deep Cleaning', 35000, 4),
+    TreatmentOption('Leather Shoes Care', 40000, 4),
+    TreatmentOption('Suede Shoes Care', 40000, 3),
+    TreatmentOption('Unyellowing', 40000, 5),
+    TreatmentOption('Unyellowing + Deep Cleaning', 70000, 5),
+    TreatmentOption('Express', 70000, 1),
+  ],
+  'Sepatu Anak': [
+    TreatmentOption('Cuci Sepatu Anak', 25000, 3),
+  ],
+  'Sandal (Wanita/Gunung/Flat Shoes)': [
+    TreatmentOption('Cuci Sandal', 25000, 3),
+  ],
+  'Topi': [
+    TreatmentOption('Wash', 35000, 4),
+    TreatmentOption('Hat Repaint (1 warna)', 90000, 5),
+  ],
+  'Tas Wanita': [
+    TreatmentOption('Wash', 35000, 4),
+  ],
+  'Backpack/Carrier/Tas Olahraga': [
+    TreatmentOption('Backpack', 45000, 5),
+    TreatmentOption('Carrier', 60000, 5),
+    TreatmentOption('Tas Olahraga', 40000, 5),
+  ],
+};
+
+class CartItem {
+  final String jenisBarang;
+  final TreatmentOption treatment;
+  final bool warnaPutih;
+  final int jumlah;
+  final int hargaSatuan;
+  final DateTime tanggalSelesai;
+
+  CartItem({
+    required this.jenisBarang,
+    required this.treatment,
+    required this.warnaPutih,
+    required this.jumlah,
+    required this.hargaSatuan,
+    required this.tanggalSelesai,
+  });
+
+  int get subtotal => hargaSatuan * jumlah;
+}
+
+class Keranjang {
+  static final List<CartItem> items = [];
+  static int get totalHarga => items.fold(0, (sum, item) => sum + item.subtotal);
+}
 
 class PilihJenisBarangPage extends StatelessWidget {
   const PilihJenisBarangPage({super.key});
-
-  static const List<String> jenisBarang = [
-    'Sepatu Dewasa',
-    'Sepatu Anak',
-    'Sandal (Wanita/Gunung/Flat Shoes)',
-    'Topi',
-    'Tas Wanita',
-    'Backpack/Carrier/Tas Olahraga',
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -72,12 +114,27 @@ class PilihJenisBarangPage extends StatelessWidget {
         title: const Text('GK. SHOECARE'),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: Badge(
+              label: Text('${Keranjang.items.length}'),
+              isLabelVisible: Keranjang.items.isNotEmpty,
+              child: const Icon(Icons.shopping_cart),
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const KeranjangPage()),
+              );
+            },
+          ),
+        ],
       ),
       body: ListView.builder(
         padding: const EdgeInsets.all(16),
-        itemCount: jenisBarang.length,
+        itemCount: jenisBarangList.length,
         itemBuilder: (context, index) {
-          final nama = jenisBarang[index];
+          final nama = jenisBarangList[index];
           return Card(
             margin: const EdgeInsets.only(bottom: 12),
             child: ListTile(
@@ -111,6 +168,7 @@ class _TreatmentPageState extends State<TreatmentPage> {
   @override
   Widget build(BuildContext context) {
     final tambahan = warnaPutih ? 5000 : 0;
+    final daftarTreatment = treatmentPerJenis[widget.jenisBarang] ?? [];
     return Scaffold(
       backgroundColor: const Color(0xFFF5B315),
       appBar: AppBar(
@@ -147,6 +205,7 @@ class _TreatmentPageState extends State<TreatmentPage> {
                           builder: (context) => JumlahBarangPage(
                             jenisBarang: widget.jenisBarang,
                             treatment: t,
+                            warnaPutih: warnaPutih,
                             hargaSatuan: hargaSatuan,
                           ),
                         ),
@@ -166,12 +225,14 @@ class _TreatmentPageState extends State<TreatmentPage> {
 class JumlahBarangPage extends StatefulWidget {
   final String jenisBarang;
   final TreatmentOption treatment;
+  final bool warnaPutih;
   final int hargaSatuan;
 
   const JumlahBarangPage({
     super.key,
     required this.jenisBarang,
     required this.treatment,
+    required this.warnaPutih,
     required this.hargaSatuan,
   });
 
@@ -258,14 +319,113 @@ class _JumlahBarangPageState extends State<JumlahBarangPage> {
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.black, foregroundColor: Colors.white, padding: const EdgeInsets.all(16)),
                 onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Halaman pembayaran nyusul')),
+                  Keranjang.items.add(CartItem(
+                    jenisBarang: widget.jenisBarang,
+                    treatment: widget.treatment,
+                    warnaPutih: widget.warnaPutih,
+                    jumlah: jumlah,
+                    hargaSatuan: widget.hargaSatuan,
+                    tanggalSelesai: tanggalSelesai,
+                  ));
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const KeranjangPage()),
                   );
                 },
-                child: const Text('Lanjut ke Pembayaran'),
+                child: const Text('Tambah ke Keranjang'),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class KeranjangPage extends StatefulWidget {
+  const KeranjangPage({super.key});
+
+  @override
+  State<KeranjangPage> createState() => _KeranjangPageState();
+}
+
+class _KeranjangPageState extends State<KeranjangPage> {
+  @override
+  Widget build(BuildContext context) {
+    final items = Keranjang.items;
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5B315),
+      appBar: AppBar(
+        title: const Text('Keranjang'),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+      ),
+      body: items.isEmpty
+          ? const Center(child: Text('Keranjang masih kosong'))
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: items.length,
+              itemBuilder: (context, index) {
+                final item = items[index];
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: ListTile(
+                    title: Text('${item.jenisBarang} - ${item.treatment.nama}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text('${item.jumlah}x${item.warnaPutih ? ' (putih)' : ''} - Selesai: ${formatTanggal(item.tanggalSelesai)}'),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(formatRupiah(item.subtotal), style: const TextStyle(fontWeight: FontWeight.bold)),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () => setState(() => items.removeAt(index)),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Total', style: TextStyle(fontSize: 18)),
+                  Text(formatRupiah(Keranjang.totalHarga), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.popUntil(context, (route) => route.isFirst),
+                      child: const Text('Tambah Item Lain'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.black, foregroundColor: Colors.white),
+                      onPressed: items.isEmpty
+                          ? null
+                          : () {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Halaman pembayaran nyusul')),
+                              );
+                            },
+                      child: const Text('Bayar'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
