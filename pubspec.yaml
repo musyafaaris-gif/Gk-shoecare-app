@@ -15,4 +15,4 @@ dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/file_000000001344820880218e311f8ddb40.png
+    - file_000000001344820880218e311f8ddb40.png
