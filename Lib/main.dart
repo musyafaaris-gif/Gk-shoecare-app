@@ -11,17 +11,23 @@ class GKShoecareApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'GK Shoecare',
-      theme: ThemeData(
-        primarySwatch: Colors.amber,
-        useMaterial3: true,
-      ),
-      home: const HomePage(),
+      theme: ThemeData(useMaterial3: true),
+      home: const PilihJenisBarangPage(),
     );
   }
 }
 
-class HomePage extends StatelessWidget {
-  const HomePage({super.key});
+class PilihJenisBarangPage extends StatelessWidget {
+  const PilihJenisBarangPage({super.key});
+
+  static const List<String> jenisBarang = [
+    'Sepatu Dewasa',
+    'Sepatu Anak',
+    'Sandal (Wanita/Gunung/Flat Shoes)',
+    'Topi',
+    'Tas Wanita',
+    'Backpack/Carrier/Tas Olahraga',
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -30,12 +36,51 @@ class HomePage extends StatelessWidget {
       appBar: AppBar(
         title: const Text('GK. SHOECARE'),
         backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
       ),
-      body: const Center(
-        child: Text(
-          'Selamat datang di GK Shoecare!',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-        ),
+      body: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: jenisBarang.length,
+        itemBuilder: (context, index) {
+          final nama = jenisBarang[index];
+          return Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: ListTile(
+              title: Text(
+                nama,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => TreatmentPage(jenisBarang: nama),
+                  ),
+                );
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class TreatmentPage extends StatelessWidget {
+  final String jenisBarang;
+  const TreatmentPage({super.key, required this.jenisBarang});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Treatment untuk $jenisBarang'),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+      ),
+      body: Center(
+        child: Text('Kamu pilih: $jenisBarang\n(halaman treatment nyusul)'),
       ),
     );
   }
