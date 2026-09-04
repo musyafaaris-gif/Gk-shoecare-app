@@ -32,7 +32,7 @@ class SplashPage extends StatelessWidget {
             child: Image.asset('assets/logo.png', fit: BoxFit.cover),
           ),
           Align(
-            alignment: const Alignment(0, 0.05),
+            alignment: const Alignment(0, 0.3),
             child: SizedBox(
               width: 220,
               height: 52,
