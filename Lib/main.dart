@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 void main() {
   runApp(const GKShoecareApp());
@@ -85,6 +87,7 @@ class CartItem {
   final int jumlah;
   final int hargaSatuan;
   final DateTime tanggalSelesai;
+  final File foto;
 
   CartItem({
     required this.jenisBarang,
@@ -93,6 +96,7 @@ class CartItem {
     required this.jumlah,
     required this.hargaSatuan,
     required this.tanggalSelesai,
+    required this.foto,
   });
 
   int get subtotal => hargaSatuan * jumlah;
@@ -202,7 +206,7 @@ class _TreatmentPageState extends State<TreatmentPage> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => JumlahBarangPage(
+                          builder: (context) => UploadFotoPage(
                             jenisBarang: widget.jenisBarang,
                             treatment: t,
                             warnaPutih: warnaPutih,
@@ -222,11 +226,107 @@ class _TreatmentPageState extends State<TreatmentPage> {
   }
 }
 
+class UploadFotoPage extends StatefulWidget {
+  final String jenisBarang;
+  final TreatmentOption treatment;
+  final bool warnaPutih;
+  final int hargaSatuan;
+
+  const UploadFotoPage({
+    super.key,
+    required this.jenisBarang,
+    required this.treatment,
+    required this.warnaPutih,
+    required this.hargaSatuan,
+  });
+
+  @override
+  State<UploadFotoPage> createState() => _UploadFotoPageState();
+}
+
+class _UploadFotoPageState extends State<UploadFotoPage> {
+  File? fotoTerpilih;
+
+  Future<void> pilihFoto() async {
+    final picker = ImagePicker();
+    final XFile? hasil = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    if (hasil != null) {
+      setState(() => fotoTerpilih = File(hasil.path));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5B315),
+      appBar: AppBar(
+        title: const Text('Upload Foto Barang'),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Text('${widget.jenisBarang} - ${widget.treatment.nama}',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 16),
+            if (fotoTerpilih != null)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.file(fotoTerpilih!, height: 250, width: double.infinity, fit: BoxFit.cover),
+              )
+            else
+              Container(
+                height: 250,
+                width: double.infinity,
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                child: const Center(child: Icon(Icons.image_outlined, size: 64, color: Colors.grey)),
+              ),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: pilihFoto,
+              icon: const Icon(Icons.photo_library_outlined),
+              label: Text(fotoTerpilih == null ? 'Pilih Foto dari Galeri' : 'Ganti Foto'),
+            ),
+            const Spacer(),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black, foregroundColor: Colors.white, padding: const EdgeInsets.all(16)),
+                onPressed: fotoTerpilih == null
+                    ? null
+                    : () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => JumlahBarangPage(
+                              jenisBarang: widget.jenisBarang,
+                              treatment: widget.treatment,
+                              warnaPutih: widget.warnaPutih,
+                              hargaSatuan: widget.hargaSatuan,
+                              foto: fotoTerpilih!,
+                            ),
+                          ),
+                        );
+                      },
+                child: const Text('Lanjut'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class JumlahBarangPage extends StatefulWidget {
   final String jenisBarang;
   final TreatmentOption treatment;
   final bool warnaPutih;
   final int hargaSatuan;
+  final File foto;
 
   const JumlahBarangPage({
     super.key,
@@ -234,6 +334,7 @@ class JumlahBarangPage extends StatefulWidget {
     required this.treatment,
     required this.warnaPutih,
     required this.hargaSatuan,
+    required this.foto,
   });
 
   @override
@@ -317,7 +418,8 @@ class _JumlahBarangPageState extends State<JumlahBarangPage> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.black, foregroundColor: Colors.white, padding: const EdgeInsets.all(16)),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black, foregroundColor: Colors.white, padding: const EdgeInsets.all(16)),
                 onPressed: () {
                   Keranjang.items.add(CartItem(
                     jenisBarang: widget.jenisBarang,
@@ -326,6 +428,7 @@ class _JumlahBarangPageState extends State<JumlahBarangPage> {
                     jumlah: jumlah,
                     hargaSatuan: widget.hargaSatuan,
                     tanggalSelesai: tanggalSelesai,
+                    foto: widget.foto,
                   ));
                   Navigator.push(
                     context,
@@ -370,8 +473,14 @@ class _KeranjangPageState extends State<KeranjangPage> {
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
                   child: ListTile(
-                    title: Text('${item.jenisBarang} - ${item.treatment.nama}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text('${item.jumlah}x${item.warnaPutih ? ' (putih)' : ''} - Selesai: ${formatTanggal(item.tanggalSelesai)}'),
+                    leading: ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: Image.file(item.foto, width: 48, height: 48, fit: BoxFit.cover),
+                    ),
+                    title: Text('${item.jenisBarang} - ${item.treatment.nama}',
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle:
+                        Text('${item.jumlah}x${item.warnaPutih ? ' (putih)' : ''} - Selesai: ${formatTanggal(item.tanggalSelesai)}'),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
