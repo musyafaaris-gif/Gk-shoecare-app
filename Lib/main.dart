@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 void main() {
@@ -126,10 +127,7 @@ class PilihJenisBarangPage extends StatelessWidget {
               child: const Icon(Icons.shopping_cart),
             ),
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const KeranjangPage()),
-              );
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const KeranjangPage()));
             },
           ),
         ],
@@ -145,10 +143,7 @@ class PilihJenisBarangPage extends StatelessWidget {
               title: Text(nama, style: const TextStyle(fontWeight: FontWeight.bold)),
               trailing: const Icon(Icons.arrow_forward_ios, size: 16),
               onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => TreatmentPage(jenisBarang: nama)),
-                );
+                Navigator.push(context, MaterialPageRoute(builder: (context) => TreatmentPage(jenisBarang: nama)));
               },
             ),
           );
@@ -247,9 +242,9 @@ class UploadFotoPage extends StatefulWidget {
 class _UploadFotoPageState extends State<UploadFotoPage> {
   File? fotoTerpilih;
 
-  Future<void> pilihFoto() async {
+  Future<void> pilihFoto(ImageSource source) async {
     final picker = ImagePicker();
-    final XFile? hasil = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    final XFile? hasil = await picker.pickImage(source: source, imageQuality: 70);
     if (hasil != null) {
       setState(() => fotoTerpilih = File(hasil.path));
     }
@@ -284,10 +279,24 @@ class _UploadFotoPageState extends State<UploadFotoPage> {
                 child: const Center(child: Icon(Icons.image_outlined, size: 64, color: Colors.grey)),
               ),
             const SizedBox(height: 16),
-            OutlinedButton.icon(
-              onPressed: pilihFoto,
-              icon: const Icon(Icons.photo_library_outlined),
-              label: Text(fotoTerpilih == null ? 'Pilih Foto dari Galeri' : 'Ganti Foto'),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => pilihFoto(ImageSource.camera),
+                    icon: const Icon(Icons.camera_alt_outlined),
+                    label: const Text('Kamera'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => pilihFoto(ImageSource.gallery),
+                    icon: const Icon(Icons.photo_library_outlined),
+                    label: const Text('Galeri'),
+                  ),
+                ),
+              ],
             ),
             const Spacer(),
             SizedBox(
@@ -430,10 +439,7 @@ class _JumlahBarangPageState extends State<JumlahBarangPage> {
                     tanggalSelesai: tanggalSelesai,
                     foto: widget.foto,
                   ));
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const KeranjangPage()),
-                  );
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const KeranjangPage()));
                 },
                 child: const Text('Tambah ke Keranjang'),
               ),
@@ -479,8 +485,8 @@ class _KeranjangPageState extends State<KeranjangPage> {
                     ),
                     title: Text('${item.jenisBarang} - ${item.treatment.nama}',
                         style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle:
-                        Text('${item.jumlah}x${item.warnaPutih ? ' (putih)' : ''} - Selesai: ${formatTanggal(item.tanggalSelesai)}'),
+                    subtitle: Text(
+                        '${item.jumlah}x${item.warnaPutih ? ' (putih)' : ''} - Selesai: ${formatTanggal(item.tanggalSelesai)}'),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -524,9 +530,7 @@ class _KeranjangPageState extends State<KeranjangPage> {
                       onPressed: items.isEmpty
                           ? null
                           : () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Halaman pembayaran nyusul')),
-                              );
+                              Navigator.push(context, MaterialPageRoute(builder: (context) => const PaymentPage()));
                             },
                       child: const Text('Bayar'),
                     ),
@@ -536,6 +540,140 @@ class _KeranjangPageState extends State<KeranjangPage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class PaymentPage extends StatelessWidget {
+  const PaymentPage({super.key});
+
+  void salin(BuildContext context, String teks, String label) {
+    Clipboard.setData(ClipboardData(text: teks));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$label disalin')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = Keranjang.items;
+    final total = Keranjang.totalHarga;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5B315),
+      appBar: AppBar(
+        title: const Text('Pembayaran'),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const Text('Ringkasan Pesanan', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 8),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                children: items
+                    .map((item) => Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                  child: Text('${item.jenisBarang} - ${item.treatment.nama} (${item.jumlah}x)')),
+                              Text(formatRupiah(item.subtotal)),
+                            ],
+                          ),
+                        ))
+                    .toList(),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            color: Colors.black,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Total Bayar', style: TextStyle(color: Colors.white, fontSize: 16)),
+                  Text(formatRupiah(total),
+                      style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text('Pilih Metode Pembayaran', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.account_balance),
+              title: const Text('Transfer Bank BCA'),
+              subtitle: const Text('6042769068 a.n. Azmi Alimudin'),
+              trailing: IconButton(
+                icon: const Icon(Icons.copy),
+                onPressed: () => salin(context, '6042769068', 'Nomor rekening'),
+              ),
+            ),
+          ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.account_balance_wallet),
+              title: const Text('E-Wallet'),
+              subtitle: const Text('+62 821-2875-4716 a.n. Azmi Alimudin'),
+              trailing: IconButton(
+                icon: const Icon(Icons.copy),
+                onPressed: () => salin(context, '082128754716', 'Nomor e-wallet'),
+              ),
+            ),
+          ),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                children: [
+                  const Text('QRIS', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.asset('assets/qris.png', width: 220),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.black, foregroundColor: Colors.white, padding: const EdgeInsets.all(16)),
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Pesanan Diterima'),
+                    content: const Text(
+                        'Silakan transfer sesuai total, lalu kirim bukti transfer ke WhatsApp admin GK Shoecare: +62821-2356-2903'),
+                    actions: [
+                      TextButton(
+                        onPressed: () {
+                          Keranjang.items.clear();
+                          Navigator.popUntil(context, (route) => route.isFirst);
+                        },
+                        child: const Text('OK'),
+                      ),
+                    ],
+                  ),
+                );
+              },
+              child: const Text('Saya Sudah Transfer'),
+            ),
+          ),
+        ],
       ),
     );
   }
