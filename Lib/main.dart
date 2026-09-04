@@ -7,7 +7,7 @@ Card(
                   const SizedBox(height: 8),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: Image.asset('assets/qris.png', width: 220),
+                    child: Image.asset('file_000000001344820880218e311f8ddb40.png', width: 220),
                   ),
                 ],
               ),
