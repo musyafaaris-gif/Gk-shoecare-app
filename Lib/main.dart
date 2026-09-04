@@ -25,20 +25,16 @@ class SplashPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const double lebar = 260;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5B315),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: lebar,
-              child: Image.asset('assets/logo.png'),
-            ),
-            const SizedBox(height: 32),
-            SizedBox(
-              width: lebar,
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: Image.asset('assets/logo.png', fit: BoxFit.cover),
+          ),
+          Align(
+            alignment: const Alignment(0, 0.05),
+            child: SizedBox(
+              width: 220,
               height: 52,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
@@ -59,8 +55,8 @@ class SplashPage extends StatelessWidget {
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
