@@ -11,9 +11,9 @@ workflows:
       - name: Set app name
         script: |
           perl -i -pe 's/android:label="[^"]*"/android:label="GK Shoe Care"/' android/app/src/main/AndroidManifest.xml
-      - name: Add camera permission
+      - name: Add permissions
         script: |
-          perl -i -pe 's|<application|    <uses-permission android:name="android.permission.CAMERA" />\n    <application|' android/app/src/main/AndroidManifest.xml
+          perl -i -pe 's|<application|    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.INTERNET" />\n    <application|' android/app/src/main/AndroidManifest.xml
       - name: Get packages
         script: |
           flutter pub get
