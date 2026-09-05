@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const GKShoecareApp());
@@ -25,6 +26,17 @@ class GKShoecareApp extends StatelessWidget {
 class SplashPage extends StatelessWidget {
   const SplashPage({super.key});
 
+  Future<void> mulai(BuildContext context) async {
+    final prefs = await SharedPreferences.getInstance();
+    final nama = prefs.getString('nama_customer');
+    if (!context.mounted) return;
+    if (nama == null || nama.isEmpty) {
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const DaftarProfilPage()));
+    } else {
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const PilihJenisBarangPage()));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -45,12 +57,7 @@ class SplashPage extends StatelessWidget {
                   shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
                   elevation: 0,
                 ),
-                onPressed: () {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(builder: (context) => const PilihJenisBarangPage()),
-                  );
-                },
+                onPressed: () => mulai(context),
                 child: const Text(
                   'MULAI TREATMENT',
                   style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5),
@@ -59,6 +66,85 @@ class SplashPage extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class DaftarProfilPage extends StatefulWidget {
+  const DaftarProfilPage({super.key});
+
+  @override
+  State<DaftarProfilPage> createState() => _DaftarProfilPageState();
+}
+
+class _DaftarProfilPageState extends State<DaftarProfilPage> {
+  final namaController = TextEditingController();
+  final noWaController = TextEditingController();
+
+  Future<void> simpanDanLanjut() async {
+    if (namaController.text.trim().isEmpty || noWaController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nama & nomor WA wajib diisi')),
+      );
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('nama_customer', namaController.text.trim());
+    await prefs.setString('no_wa_customer', noWaController.text.trim());
+    if (!mounted) return;
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const PilihJenisBarangPage()));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5B315),
+      appBar: AppBar(
+        title: const Text('Data Diri'),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Isi data diri kamu dulu ya (cuma sekali)',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 24),
+            TextField(
+              controller: namaController,
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: Colors.white,
+                labelText: 'Nama',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: noWaController,
+              keyboardType: TextInputType.phone,
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: Colors.white,
+                labelText: 'Nomor WhatsApp',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black, foregroundColor: Colors.white, padding: const EdgeInsets.all(16)),
+                onPressed: simpanDanLanjut,
+                child: const Text('Simpan & Lanjut'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -622,7 +708,7 @@ class _PaymentPageState extends State<PaymentPage> {
     return data['secure_url'] as String;
   }
 
-  Future<void> simpanPesananKeFirestore(CartItem item, String fotoUrl) async {
+  Future<void> simpanPesananKeFirestore(CartItem item, String fotoUrl, String namaCustomer, String noWaCustomer) async {
     final uri = Uri.parse(
         'https://firestore.googleapis.com/v1/projects/$firestoreProjectId/databases/(default)/documents/pesanan');
     final response = await http.post(
@@ -630,6 +716,8 @@ class _PaymentPageState extends State<PaymentPage> {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'fields': {
+          'namaCustomer': {'stringValue': namaCustomer},
+          'noWaCustomer': {'stringValue': noWaCustomer},
           'jenisBarang': {'stringValue': item.jenisBarang},
           'treatment': {'stringValue': item.treatment.nama},
           'warnaPutih': {'booleanValue': item.warnaPutih},
@@ -650,9 +738,13 @@ class _PaymentPageState extends State<PaymentPage> {
   Future<void> kirimSemuaPesanan() async {
     setState(() => sedangKirim = true);
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final namaCustomer = prefs.getString('nama_customer') ?? '';
+      final noWaCustomer = prefs.getString('no_wa_customer') ?? '';
+
       for (final item in Keranjang.items) {
         final fotoUrl = await uploadFotoKeCloudinary(item.foto);
-        await simpanPesananKeFirestore(item, fotoUrl);
+        await simpanPesananKeFirestore(item, fotoUrl, namaCustomer, noWaCustomer);
       }
       if (!mounted) return;
       showDialog(
