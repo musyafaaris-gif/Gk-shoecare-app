@@ -165,6 +165,17 @@ String formatTanggal(DateTime d) {
   return '${d.day} ${bulan[d.month]} ${d.year}';
 }
 
+Color warnaStatus(String status) {
+  switch (status) {
+    case 'Dikerjakan':
+      return Colors.orange[700]!;
+    case 'Sudah Selesai':
+      return Colors.green[700]!;
+    default:
+      return Colors.blueGrey;
+  }
+}
+
 class TreatmentOption {
   final String nama;
   final int harga;
@@ -250,6 +261,13 @@ class PilihJenisBarangPage extends StatelessWidget {
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.receipt_long),
+            tooltip: 'Status Pesanan',
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const StatusPesananPage()));
+            },
+          ),
           IconButton(
             icon: Badge(
               label: Text('${Keranjang.items.length}'),
@@ -726,6 +744,7 @@ class _PaymentPageState extends State<PaymentPage> {
           'subtotal': {'integerValue': item.subtotal.toString()},
           'tanggalSelesai': {'stringValue': formatTanggal(item.tanggalSelesai)},
           'fotoUrl': {'stringValue': fotoUrl},
+          'status': {'stringValue': 'Sudah Diambil'},
           'createdAt': {'timestampValue': DateTime.now().toUtc().toIso8601String()},
         }
       }),
@@ -884,6 +903,187 @@ class _PaymentPageState extends State<PaymentPage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class RiwayatPesanan {
+  final String jenisBarang;
+  final String treatment;
+  final int subtotal;
+  final String tanggalSelesai;
+  final String status;
+  final String fotoUrl;
+  final DateTime createdAt;
+
+  RiwayatPesanan({
+    required this.jenisBarang,
+    required this.treatment,
+    required this.subtotal,
+    required this.tanggalSelesai,
+    required this.status,
+    required this.fotoUrl,
+    required this.createdAt,
+  });
+
+  factory RiwayatPesanan.fromFirestore(Map<String, dynamic> fields) {
+    String getString(String key) => fields[key]?['stringValue'] ?? '';
+    int getInt(String key) => int.tryParse(fields[key]?['integerValue']?.toString() ?? '0') ?? 0;
+    DateTime createdAt;
+    try {
+      createdAt = DateTime.parse(fields['createdAt']?['timestampValue'] ?? '');
+    } catch (_) {
+      createdAt = DateTime.now();
+    }
+    final statusMentah = getString('status');
+    return RiwayatPesanan(
+      jenisBarang: getString('jenisBarang'),
+      treatment: getString('treatment'),
+      subtotal: getInt('subtotal'),
+      tanggalSelesai: getString('tanggalSelesai'),
+      status: statusMentah.isEmpty ? 'Sudah Diambil' : statusMentah,
+      fotoUrl: getString('fotoUrl'),
+      createdAt: createdAt,
+    );
+  }
+}
+
+class StatusPesananPage extends StatefulWidget {
+  const StatusPesananPage({super.key});
+
+  @override
+  State<StatusPesananPage> createState() => _StatusPesananPageState();
+}
+
+class _StatusPesananPageState extends State<StatusPesananPage> {
+  static const String firestoreProjectId = 'gk-shoecare';
+  List<RiwayatPesanan> daftar = [];
+  bool sedangMemuat = true;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    muatData();
+  }
+
+  Future<void> muatData() async {
+    setState(() {
+      sedangMemuat = true;
+      error = null;
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final noWa = prefs.getString('no_wa_customer') ?? '';
+      final uri = Uri.parse(
+          'https://firestore.googleapis.com/v1/projects/$firestoreProjectId/databases/(default)/documents:runQuery');
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'structuredQuery': {
+            'from': [
+              {'collectionId': 'pesanan'}
+            ],
+            'where': {
+              'fieldFilter': {
+                'field': {'fieldPath': 'noWaCustomer'},
+                'op': 'EQUAL',
+                'value': {'stringValue': noWa}
+              }
+            }
+          }
+        }),
+      );
+      if (response.statusCode != 200) {
+        throw Exception('Gagal memuat (${response.statusCode})');
+      }
+      final List data = jsonDecode(response.body);
+      final hasil = data
+          .where((item) => item['document'] != null)
+          .map((item) => RiwayatPesanan.fromFirestore(item['document']['fields'] as Map<String, dynamic>))
+          .toList();
+      hasil.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      setState(() {
+        daftar = hasil;
+        sedangMemuat = false;
+      });
+    } catch (e) {
+      setState(() {
+        error = 'Gagal memuat: $e';
+        sedangMemuat = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5B315),
+      appBar: AppBar(
+        title: const Text('Status Pesanan Saya'),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: muatData)],
+      ),
+      body: sedangMemuat
+          ? const Center(child: CircularProgressIndicator())
+          : error != null
+              ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(error!)))
+              : daftar.isEmpty
+                  ? const Center(child: Text('Belum ada pesanan'))
+                  : RefreshIndicator(
+                      onRefresh: muatData,
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: daftar.length,
+                        itemBuilder: (context, index) {
+                          final p = daftar[index];
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Image.network(
+                                      p.fotoUrl,
+                                      width: 60,
+                                      height: 60,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (c, e, s) => Container(width: 60, height: 60, color: Colors.grey[300]),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('${p.jenisBarang} - ${p.treatment}',
+                                            style: const TextStyle(fontWeight: FontWeight.bold)),
+                                        Text('${formatRupiah(p.subtotal)} • Estimasi: ${p.tanggalSelesai}',
+                                            style: const TextStyle(fontSize: 12)),
+                                        const SizedBox(height: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                          decoration: BoxDecoration(
+                                              color: warnaStatus(p.status), borderRadius: BorderRadius.circular(20)),
+                                          child: Text(p.status,
+                                              style: const TextStyle(
+                                                  color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
     );
   }
 }
