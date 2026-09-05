@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
 void main() {
@@ -32,7 +34,7 @@ class SplashPage extends StatelessWidget {
             child: Image.asset('assets/logo.png', fit: BoxFit.cover),
           ),
           Align(
-            alignment: const Alignment(0, 0.3),
+            alignment: const Alignment(0, 0.22),
             child: SizedBox(
               width: 220,
               height: 52,
@@ -587,12 +589,97 @@ class _KeranjangPageState extends State<KeranjangPage> {
   }
 }
 
-class PaymentPage extends StatelessWidget {
+class PaymentPage extends StatefulWidget {
   const PaymentPage({super.key});
 
-  void salin(BuildContext context, String teks, String label) {
+  @override
+  State<PaymentPage> createState() => _PaymentPageState();
+}
+
+class _PaymentPageState extends State<PaymentPage> {
+  bool sedangKirim = false;
+
+  static const String cloudName = 'dw0xiznv';
+  static const String uploadPreset = 'gk_shoecare_upload';
+  static const String firestoreProjectId = 'gk-shoecare';
+
+  void salin(String teks, String label) {
     Clipboard.setData(ClipboardData(text: teks));
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$label disalin')));
+  }
+
+  Future<String> uploadFotoKeCloudinary(File foto) async {
+    final uri = Uri.parse('https://api.cloudinary.com/v1_1/$cloudName/image/upload');
+    final request = http.MultipartRequest('POST', uri)
+      ..fields['upload_preset'] = uploadPreset
+      ..files.add(await http.MultipartFile.fromPath('file', foto.path));
+    final response = await request.send();
+    final body = await response.stream.bytesToString();
+    if (response.statusCode != 200) {
+      throw Exception('Upload foto gagal: $body');
+    }
+    final data = jsonDecode(body);
+    return data['secure_url'] as String;
+  }
+
+  Future<void> simpanPesananKeFirestore(CartItem item, String fotoUrl) async {
+    final uri = Uri.parse(
+        'https://firestore.googleapis.com/v1/projects/$firestoreProjectId/databases/(default)/documents/pesanan');
+    final response = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'fields': {
+          'jenisBarang': {'stringValue': item.jenisBarang},
+          'treatment': {'stringValue': item.treatment.nama},
+          'warnaPutih': {'booleanValue': item.warnaPutih},
+          'jumlah': {'integerValue': item.jumlah.toString()},
+          'hargaSatuan': {'integerValue': item.hargaSatuan.toString()},
+          'subtotal': {'integerValue': item.subtotal.toString()},
+          'tanggalSelesai': {'stringValue': formatTanggal(item.tanggalSelesai)},
+          'fotoUrl': {'stringValue': fotoUrl},
+          'createdAt': {'timestampValue': DateTime.now().toUtc().toIso8601String()},
+        }
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Simpan pesanan gagal: ${response.body}');
+    }
+  }
+
+  Future<void> kirimSemuaPesanan() async {
+    setState(() => sedangKirim = true);
+    try {
+      for (final item in Keranjang.items) {
+        final fotoUrl = await uploadFotoKeCloudinary(item.foto);
+        await simpanPesananKeFirestore(item, fotoUrl);
+      }
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Pesanan Diterima'),
+          content: const Text(
+              'Pesanan kamu sudah tersimpan. Silakan transfer sesuai total, lalu kirim bukti transfer ke WhatsApp admin GK Shoecare: +62821-2356-2903'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Keranjang.items.clear();
+                Navigator.popUntil(context, (route) => route.isFirst);
+              },
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal mengirim pesanan, coba lagi. ($e)')),
+      );
+    } finally {
+      if (mounted) setState(() => sedangKirim = false);
+    }
   }
 
   @override
@@ -657,7 +744,7 @@ class PaymentPage extends StatelessWidget {
               subtitle: const Text('6042769068 a.n. Azmi Alimudin'),
               trailing: IconButton(
                 icon: const Icon(Icons.copy),
-                onPressed: () => salin(context, '6042769068', 'Nomor rekening'),
+                onPressed: () => salin('6042769068', 'Nomor rekening'),
               ),
             ),
           ),
@@ -668,7 +755,7 @@ class PaymentPage extends StatelessWidget {
               subtitle: const Text('+62 821-2875-4716 a.n. Azmi Alimudin'),
               trailing: IconButton(
                 icon: const Icon(Icons.copy),
-                onPressed: () => salin(context, '082128754716', 'Nomor e-wallet'),
+                onPressed: () => salin('082128754716', 'Nomor e-wallet'),
               ),
             ),
           ),
@@ -693,26 +780,14 @@ class PaymentPage extends StatelessWidget {
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.black, foregroundColor: Colors.white, padding: const EdgeInsets.all(16)),
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text('Pesanan Diterima'),
-                    content: const Text(
-                        'Silakan transfer sesuai total, lalu kirim bukti transfer ke WhatsApp admin GK Shoecare: +62821-2356-2903'),
-                    actions: [
-                      TextButton(
-                        onPressed: () {
-                          Keranjang.items.clear();
-                          Navigator.popUntil(context, (route) => route.isFirst);
-                        },
-                        child: const Text('OK'),
-                      ),
-                    ],
-                  ),
-                );
-              },
-              child: const Text('Saya Sudah Transfer'),
+              onPressed: sedangKirim ? null : kirimSemuaPesanan,
+              child: sedangKirim
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text('Saya Sudah Transfer'),
             ),
           ),
         ],
