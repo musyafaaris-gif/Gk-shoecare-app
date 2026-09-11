@@ -23,5 +23,8 @@ workflows:
       - name: Build APK
         script: |
           flutter build apk --release
+      - name: Rename APK
+        script: |
+          find build/app/outputs -name "*.apk" -exec mv {} build/app/outputs/GK_Shoecare.apk \;
     artifacts:
       - build/app/outputs/**/*.apk
