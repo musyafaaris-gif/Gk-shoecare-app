@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -64,6 +65,14 @@ String? validasiNoWa(String input) {
     return null;
   }
   return bersih;
+}
+
+double? angkaField(Map<String, dynamic> fields, String key) {
+  final f = fields[key];
+  if (f == null) return null;
+  if (f['doubleValue'] != null) return (f['doubleValue'] as num).toDouble();
+  if (f['integerValue'] != null) return double.tryParse(f['integerValue'].toString());
+  return null;
 }
 
 class SplashPage extends StatelessWidget {
@@ -1001,7 +1010,7 @@ class _KeranjangPageState extends State<KeranjangPage> {
                       onPressed: items.isEmpty
                           ? null
                           : () {
-                              Navigator.push(context, MaterialPageRoute(builder: (context) => const LokerPage()));
+                              Navigator.push(context, MaterialPageRoute(builder: (context) => const MetodePesanPage()));
                             },
                       child: const Text('Bayar'),
                     ),
@@ -1009,6 +1018,223 @@ class _KeranjangPageState extends State<KeranjangPage> {
                 ],
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class MetodePesanPage extends StatelessWidget {
+  const MetodePesanPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5B315),
+      appBar: AppBar(
+        title: const Text('Pilih Metode Pesan'),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.inbox),
+                  title: const Text('Loker Self-Service', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Taruh barang di loker toko'),
+                  onTap: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const LokerPage()));
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.store),
+                  title: const Text('Antar Langsung ke Toko', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Serahkan barang langsung ke toko'),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            const PaymentPage(lokerNomor: '-', metodePesan: 'Toko Langsung', ongkir: 0),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.delivery_dining),
+                  title: const Text('Pesan Online', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Dijemput & diantar, ada biaya ongkir'),
+                  onTap: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const HitungOngkirPage()));
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class HitungOngkirPage extends StatefulWidget {
+  const HitungOngkirPage({super.key});
+
+  @override
+  State<HitungOngkirPage> createState() => _HitungOngkirPageState();
+}
+
+class _HitungOngkirPageState extends State<HitungOngkirPage> {
+  bool sedangProses = true;
+  String? error;
+  int? ongkirDihitung;
+  double? jarakKm;
+
+  @override
+  void initState() {
+    super.initState();
+    hitungOngkir();
+  }
+
+  Future<void> hitungOngkir() async {
+    setState(() {
+      sedangProses = true;
+      error = null;
+    });
+    try {
+      bool layananAktif = await Geolocator.isLocationServiceEnabled();
+      if (!layananAktif) {
+        throw Exception('Aktifkan GPS/Lokasi HP kamu dulu');
+      }
+      LocationPermission izin = await Geolocator.checkPermission();
+      if (izin == LocationPermission.denied) {
+        izin = await Geolocator.requestPermission();
+        if (izin == LocationPermission.denied) {
+          throw Exception('Izin lokasi ditolak');
+        }
+      }
+      if (izin == LocationPermission.deniedForever) {
+        throw Exception('Izin lokasi diblokir permanen, aktifkan lewat Settings HP');
+      }
+
+      final posisi = await Geolocator.getCurrentPosition();
+
+      final resToko = await http.get(Uri.parse('$firestoreBase/pengaturan/toko'));
+      if (resToko.statusCode != 200) throw Exception('Lokasi toko belum diatur admin');
+      final dataToko = jsonDecode(resToko.body);
+      final fieldsToko = dataToko['fields'] as Map<String, dynamic>? ?? {};
+      final latToko = angkaField(fieldsToko, 'lat');
+      final lngToko = angkaField(fieldsToko, 'lng');
+      if (latToko == null || lngToko == null) throw Exception('Lokasi toko belum diatur admin');
+
+      final jarakMeter = Geolocator.distanceBetween(posisi.latitude, posisi.longitude, latToko, lngToko);
+      final jarak = jarakMeter / 1000;
+
+      final resTier = await http.get(Uri.parse('$firestoreBase/ongkirTiers'));
+      final dataTier = jsonDecode(resTier.body);
+      final docsTier = (dataTier['documents'] as List?) ?? [];
+      int tarifDitemukan = -1;
+      for (final doc in docsTier) {
+        final f = doc['fields'] as Map<String, dynamic>? ?? {};
+        final min = angkaField(f, 'jarakMin') ?? 0;
+        final max = angkaField(f, 'jarakMax') ?? 0;
+        final tarif = int.tryParse(f['tarif']?['integerValue']?.toString() ?? '0') ?? 0;
+        if (jarak >= min && jarak <= max) {
+          tarifDitemukan = tarif;
+          break;
+        }
+      }
+      if (tarifDitemukan == -1) {
+        throw Exception('Jarak kamu (${jarak.toStringAsFixed(1)} km) di luar jangkauan layanan online');
+      }
+
+      setState(() {
+        jarakKm = jarak;
+        ongkirDihitung = tarifDitemukan;
+        sedangProses = false;
+      });
+    } catch (e) {
+      setState(() {
+        error = '$e'.replaceFirst('Exception: ', '');
+        sedangProses = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5B315),
+      appBar: AppBar(
+        title: const Text('Hitung Ongkir'),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+      ),
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: sedangProses
+                ? const Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text('Menghitung jarak & ongkir...'),
+                    ],
+                  )
+                : error != null
+                    ? Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(error!, textAlign: TextAlign.center),
+                          const SizedBox(height: 16),
+                          ElevatedButton(onPressed: hitungOngkir, child: const Text('Coba Lagi')),
+                        ],
+                      )
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('Jarak ke toko: ${jarakKm!.toStringAsFixed(1)} km', style: const TextStyle(fontSize: 16)),
+                          const SizedBox(height: 8),
+                          Text('Ongkir: ${formatRupiah(ongkirDihitung!)}',
+                              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 24),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.black,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.all(16)),
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => PaymentPage(
+                                      lokerNomor: '-',
+                                      metodePesan: 'Online (Dijemput & Diantar)',
+                                      ongkir: ongkirDihitung!,
+                                    ),
+                                  ),
+                                );
+                              },
+                              child: const Text('Lanjut ke Pembayaran'),
+                            ),
+                          ),
+                        ],
+                      ),
           ),
         ),
       ),
@@ -1100,7 +1326,10 @@ class _LokerPageState extends State<LokerPage> {
                               : () {
                                   Navigator.push(
                                     context,
-                                    MaterialPageRoute(builder: (context) => PaymentPage(lokerNomor: nomor)),
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          PaymentPage(lokerNomor: nomor, metodePesan: 'Loker', ongkir: 0),
+                                    ),
                                   );
                                 },
                           child: Column(
@@ -1119,9 +1348,83 @@ class _LokerPageState extends State<LokerPage> {
   }
 }
 
+class _PilihLokerSheet extends StatefulWidget {
+  const _PilihLokerSheet();
+
+  @override
+  State<_PilihLokerSheet> createState() => _PilihLokerSheetState();
+}
+
+class _PilihLokerSheetState extends State<_PilihLokerSheet> {
+  Map<String, bool> statusLoker = {};
+  bool sedangMemuat = true;
+
+  @override
+  void initState() {
+    super.initState();
+    muat();
+  }
+
+  Future<void> muat() async {
+    final response = await http.get(Uri.parse('$firestoreBase/lokers'));
+    final data = jsonDecode(response.body);
+    final docs = (data['documents'] as List?) ?? [];
+    final hasil = <String, bool>{};
+    for (final doc in docs) {
+      final fields = doc['fields'] as Map<String, dynamic>? ?? {};
+      final name = doc['name'] as String;
+      hasil[name.split('/').last] = fields['terisi']?['booleanValue'] ?? false;
+    }
+    setState(() {
+      statusLoker = hasil;
+      sedangMemuat = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: sedangMemuat
+          ? const SizedBox(height: 150, child: Center(child: CircularProgressIndicator()))
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Pilih Nomor Loker Baru', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 16),
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                  ),
+                  itemCount: 15,
+                  itemBuilder: (context, index) {
+                    final nomor = (index + 1).toString();
+                    final terisi = statusLoker[nomor] ?? false;
+                    return ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: terisi ? Colors.grey[400] : Colors.black,
+                        foregroundColor: terisi ? Colors.grey[700] : const Color(0xFFF5B315),
+                      ),
+                      onPressed: terisi ? null : () => Navigator.pop(context, nomor),
+                      child: Text(nomor, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    );
+                  },
+                ),
+              ],
+            ),
+    );
+  }
+}
+
 class PaymentPage extends StatefulWidget {
   final String lokerNomor;
-  const PaymentPage({super.key, required this.lokerNomor});
+  final String metodePesan;
+  final int ongkir;
+  const PaymentPage({super.key, required this.lokerNomor, required this.metodePesan, required this.ongkir});
 
   @override
   State<PaymentPage> createState() => _PaymentPageState();
@@ -1131,6 +1434,24 @@ class _PaymentPageState extends State<PaymentPage> {
   bool sedangKirim = false;
   bool sudahTerkirim = false;
   String pesanWa = '';
+  late String lokerTerpilih;
+
+  @override
+  void initState() {
+    super.initState();
+    lokerTerpilih = widget.lokerNomor;
+  }
+
+  Future<void> ubahLoker() async {
+    final terpilihBaru = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => const _PilihLokerSheet(),
+    );
+    if (terpilihBaru != null) {
+      setState(() => lokerTerpilih = terpilihBaru);
+    }
+  }
 
   void salin(String teks, String label) {
     Clipboard.setData(ClipboardData(text: teks));
@@ -1170,7 +1491,9 @@ class _PaymentPageState extends State<PaymentPage> {
           'tanggalSelesai': {'stringValue': formatTanggal(item.tanggalSelesai)},
           'fotoUrl': {'stringValue': fotoUrl},
           'status': {'stringValue': 'Sudah Diambil'},
-          'lokerNomor': {'stringValue': widget.lokerNomor},
+          'lokerNomor': {'stringValue': lokerTerpilih},
+          'metodePesan': {'stringValue': widget.metodePesan},
+          'ongkir': {'integerValue': widget.ongkir.toString()},
           'createdAt': {'timestampValue': DateTime.now().toUtc().toIso8601String()},
         }
       }),
@@ -1181,7 +1504,8 @@ class _PaymentPageState extends State<PaymentPage> {
   }
 
   Future<void> kunciLoker(String namaCustomer) async {
-    final uri = Uri.parse('$firestoreBase/lokers/${widget.lokerNomor}').replace(queryParameters: {
+    if (widget.metodePesan != 'Loker') return;
+    final uri = Uri.parse('$firestoreBase/lokers/$lokerTerpilih').replace(queryParameters: {
       'updateMask.fieldPaths': ['terisi', 'namaCustomer'],
     });
     await http.patch(
@@ -1199,7 +1523,7 @@ class _PaymentPageState extends State<PaymentPage> {
   Future<void> kirimSemuaPesanan() async {
     setState(() => sedangKirim = true);
     final items = List<CartItem>.from(Keranjang.items);
-    final total = Keranjang.totalHarga;
+    final total = Keranjang.totalHarga + widget.ongkir;
     try {
       final prefs = await SharedPreferences.getInstance();
       final namaCustomer = prefs.getString('nama_customer') ?? '';
@@ -1217,8 +1541,10 @@ class _PaymentPageState extends State<PaymentPage> {
         buffer.writeln(
             '- ${item.jenisBarang} - ${item.treatment.nama} (${item.jumlah}x): ${formatRupiah(item.subtotal)}');
       }
+      buffer.writeln('Metode: ${widget.metodePesan}');
+      if (widget.metodePesan == 'Loker') buffer.writeln('Nomor Loker: $lokerTerpilih');
+      if (widget.ongkir > 0) buffer.writeln('Ongkir: ${formatRupiah(widget.ongkir)}');
       buffer.writeln('Total: ${formatRupiah(total)}');
-      buffer.writeln('Nomor Loker: ${widget.lokerNomor}');
       buffer.writeln('Bukti transfer menyusul di chat ini ya.');
 
       Keranjang.items.clear();
@@ -1270,8 +1596,11 @@ class _PaymentPageState extends State<PaymentPage> {
                 const Text('Pesanan kamu sudah tersimpan!',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18), textAlign: TextAlign.center),
                 const SizedBox(height: 8),
-                Text('Taruh barang di Loker No. ${widget.lokerNomor}',
-                    style: const TextStyle(fontSize: 16), textAlign: TextAlign.center),
+                if (widget.metodePesan == 'Loker')
+                  Text('Taruh barang di Loker No. $lokerTerpilih',
+                      style: const TextStyle(fontSize: 16), textAlign: TextAlign.center)
+                else
+                  Text(widget.metodePesan, style: const TextStyle(fontSize: 16), textAlign: TextAlign.center),
                 const SizedBox(height: 24),
                 SizedBox(
                   width: double.infinity,
@@ -1304,7 +1633,7 @@ class _PaymentPageState extends State<PaymentPage> {
     }
 
     final items = Keranjang.items;
-    final total = Keranjang.totalHarga;
+    final total = Keranjang.totalHarga + widget.ongkir;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5B315),
@@ -1341,11 +1670,37 @@ class _PaymentPageState extends State<PaymentPage> {
             const SizedBox(height: 8),
             Card(
               child: ListTile(
-                leading: const Icon(Icons.inbox),
-                title: const Text('Nomor Loker'),
-                trailing: Text(widget.lokerNomor, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                leading: const Icon(Icons.local_shipping_outlined),
+                title: const Text('Metode Pesan'),
+                trailing: Text(widget.metodePesan, style: const TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),
+            if (widget.metodePesan == 'Loker')
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.inbox),
+                  title: const Text('Nomor Loker'),
+                  trailing: Text(lokerTerpilih, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                  onTap: ubahLoker,
+                ),
+              ),
+            if (widget.metodePesan == 'Loker')
+              Padding(
+                padding: const EdgeInsets.only(left: 8, bottom: 8),
+                child: TextButton.icon(
+                  onPressed: ubahLoker,
+                  icon: const Icon(Icons.edit, size: 16),
+                  label: const Text('Ubah Nomor Loker'),
+                ),
+              ),
+            if (widget.ongkir > 0)
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.delivery_dining),
+                  title: const Text('Ongkir'),
+                  trailing: Text(formatRupiah(widget.ongkir), style: const TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ),
             const SizedBox(height: 8),
             Card(
               color: Colors.black,
@@ -1429,6 +1784,7 @@ class RiwayatPesanan {
   final String status;
   final String fotoUrl;
   final String lokerNomor;
+  final String metodePesan;
   final DateTime createdAt;
 
   RiwayatPesanan({
@@ -1439,6 +1795,7 @@ class RiwayatPesanan {
     required this.status,
     required this.fotoUrl,
     required this.lokerNomor,
+    required this.metodePesan,
     required this.createdAt,
   });
 
@@ -1460,6 +1817,7 @@ class RiwayatPesanan {
       status: statusMentah.isEmpty ? 'Sudah Diambil' : statusMentah,
       fotoUrl: getString('fotoUrl'),
       lokerNomor: getString('lokerNomor'),
+      metodePesan: getString('metodePesan'),
       createdAt: createdAt,
     );
   }
@@ -1580,8 +1938,10 @@ class _StatusPesananPageState extends State<StatusPesananPage> {
                                         children: [
                                           Text('${p.jenisBarang} - ${p.treatment}',
                                               style: const TextStyle(fontWeight: FontWeight.bold)),
-                                          Text('${formatRupiah(p.subtotal)} • Loker ${p.lokerNomor}',
+                                          Text('${formatRupiah(p.subtotal)} • ${p.metodePesan}',
                                               style: const TextStyle(fontSize: 12)),
+                                          if (p.lokerNomor.isNotEmpty && p.lokerNomor != '-')
+                                            Text('Loker ${p.lokerNomor}', style: const TextStyle(fontSize: 12)),
                                           Text('Estimasi: ${p.tanggalSelesai}', style: const TextStyle(fontSize: 12)),
                                           const SizedBox(height: 6),
                                           Container(
