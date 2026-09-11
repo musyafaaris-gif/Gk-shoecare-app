@@ -1,30 +1,30 @@
-workflows:
-  android-workflow:
-    name: Android Workflow
-    max_build_duration: 30
-    environment:
-      flutter: stable
-    scripts:
-      - name: Scaffold Android platform
-        script: |
-          flutter create --platforms=android --org com.gkshoecare .
-      - name: Set app name
-        script: |
-          perl -i -pe 's/android:label="[^"]*"/android:label="GK Shoecare Admin"/' android/app/src/main/AndroidManifest.xml
-      - name: Add permissions
-        script: |
-          perl -i -pe 's|<application|    <uses-permission android:name="android.permission.INTERNET" />\n    <application|' android/app/src/main/AndroidManifest.xml
-      - name: Get packages
-        script: |
-          flutter pub get
-      - name: Generate app icon
-        script: |
-          dart run flutter_launcher_icons
-      - name: Build APK
-        script: |
-          flutter build apk --release
-      - name: Rename APK
-        script: |
-          find build/app/outputs -name "*.apk" -exec mv {} build/app/outputs/GK_Shoecare_Admin.apk \;
-    artifacts:
-      - build/app/outputs/**/*.apk
+name: gk_shoecare_app
+description: App order cuci sepatu GK Shoecare
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  image_picker: ^1.1.2
+  http: ^1.2.2
+  shared_preferences: ^2.2.3
+  url_launcher: ^6.3.1
+
+dev_dependencies:
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: true
+  image_path: "assets/icon.png"
+
+flutter:
+  uses-material-design: true
+  assets:
+    - file_000000001344820880218e311f8ddb40.png
+    - assets/logo.png
+    - assets/icon.png
