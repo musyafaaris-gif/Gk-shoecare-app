@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:gal/gal.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
@@ -59,11 +60,20 @@ Color warnaStatus(String status) {
 }
 
 String? validasiNoWa(String input) {
-  String bersih = input.replaceAll(RegExp(r'[\s\-]'), '');
+  String bersih = input.replaceAll(RegExp(r'[\s\-()]'), '');
   if (bersih.startsWith('+')) bersih = bersih.substring(1);
-  if (bersih.length < 10 || !RegExp(r'^\d+$').hasMatch(bersih)) {
-    return null;
+  if (!RegExp(r'^\d+$').hasMatch(bersih)) return null;
+
+  // Normalisasi ke format 62xxxxxxxxxx supaya konsisten disimpan & dipakai wa.me
+  if (bersih.startsWith('0')) {
+    bersih = '62${bersih.substring(1)}';
+  } else if (bersih.startsWith('8')) {
+    bersih = '62$bersih';
   }
+
+  if (!bersih.startsWith('62')) return null;
+  if (bersih.length < 10 || bersih.length > 15) return null;
+
   return bersih;
 }
 
@@ -1436,6 +1446,11 @@ class _PaymentPageState extends State<PaymentPage> {
   String pesanWa = '';
   late String lokerTerpilih;
 
+  // Lacak index item keranjang yang sudah berhasil tersimpan ke Firestore.
+  // Kalau proses gagal di tengah jalan dan customer coba lagi, item yang sudah
+  // berhasil tidak akan dikirim ulang (mencegah pesanan duplikat).
+  final Set<int> itemSudahTerkirim = {};
+
   @override
   void initState() {
     super.initState();
@@ -1456,6 +1471,23 @@ class _PaymentPageState extends State<PaymentPage> {
   void salin(String teks, String label) {
     Clipboard.setData(ClipboardData(text: teks));
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$label disalin')));
+  }
+
+  Future<void> simpanQris() async {
+    try {
+      final byteData = await rootBundle.load('file_000000001344820880218e311f8ddb40.png');
+      final bytes = byteData.buffer.asUint8List();
+      await Gal.putImageBytes(bytes, name: 'QRIS_GKShoecare');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('QRIS berhasil disimpan ke galeri')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal menyimpan QRIS: $e')),
+      );
+    }
   }
 
   Future<String> uploadFotoKeCloudinary(File foto) async {
@@ -1490,7 +1522,7 @@ class _PaymentPageState extends State<PaymentPage> {
           'subtotal': {'integerValue': item.subtotal.toString()},
           'tanggalSelesai': {'stringValue': formatTanggal(item.tanggalSelesai)},
           'fotoUrl': {'stringValue': fotoUrl},
-          'status': {'stringValue': 'Sudah Diambil'},
+          'status': {'stringValue': 'Menunggu Verifikasi'},
           'lokerNomor': {'stringValue': lokerTerpilih},
           'metodePesan': {'stringValue': widget.metodePesan},
           'ongkir': {'integerValue': widget.ongkir.toString()},
@@ -1505,7 +1537,23 @@ class _PaymentPageState extends State<PaymentPage> {
 
   Future<void> kunciLoker(String namaCustomer) async {
     if (widget.metodePesan != 'Loker') return;
-    final uri = Uri.parse('$firestoreBase/lokers/$lokerTerpilih').replace(queryParameters: {
+
+    // Cek ulang status loker tepat sebelum mengunci (bukan hanya saat buka daftar loker),
+    // supaya tidak dua customer sekaligus mengunci loker yang sama.
+    final cekUri = Uri.parse('$firestoreBase/lokers/$lokerTerpilih');
+    final cekResponse = await http.get(cekUri);
+    if (cekResponse.statusCode == 200) {
+      final data = jsonDecode(cekResponse.body);
+      final terisi = data['fields']?['terisi']?['booleanValue'] ?? false;
+      final pemilikSekarang = data['fields']?['namaCustomer']?['stringValue'] ?? '';
+      // Kalau sudah terisi oleh customer LAIN, tolak. Kalau terisi oleh customer yang sama
+      // (misalnya ini percobaan ulang setelah gagal sebagian), biarkan lanjut (idempotent).
+      if (terisi == true && pemilikSekarang != namaCustomer) {
+        throw Exception('Loker No. $lokerTerpilih baru saja dipakai orang lain, silakan pilih loker lain.');
+      }
+    }
+
+    final uri = cekUri.replace(queryParameters: {
       'updateMask.fieldPaths': ['terisi', 'namaCustomer'],
     });
     await http.patch(
@@ -1529,11 +1577,16 @@ class _PaymentPageState extends State<PaymentPage> {
       final namaCustomer = prefs.getString('nama_customer') ?? '';
       final noWaCustomer = prefs.getString('no_wa_customer') ?? '';
 
-      for (final item in items) {
-        final fotoUrl = await uploadFotoKeCloudinary(item.foto);
-        await simpanPesananKeFirestore(item, fotoUrl, namaCustomer, noWaCustomer);
-      }
+      // Kunci loker DULU sebelum upload foto apapun. Kalau loker ternyata sudah
+      // dipakai orang lain, proses gagal cepat tanpa sempat upload foto yang sia-sia.
       await kunciLoker(namaCustomer);
+
+      for (var i = 0; i < items.length; i++) {
+        if (itemSudahTerkirim.contains(i)) continue; // sudah berhasil di percobaan sebelumnya
+        final fotoUrl = await uploadFotoKeCloudinary(items[i].foto);
+        await simpanPesananKeFirestore(items[i], fotoUrl, namaCustomer, noWaCustomer);
+        itemSudahTerkirim.add(i);
+      }
 
       final buffer = StringBuffer();
       buffer.writeln('Halo, saya $namaCustomer mau konfirmasi pesanan:');
@@ -1548,6 +1601,7 @@ class _PaymentPageState extends State<PaymentPage> {
       buffer.writeln('Bukti transfer menyusul di chat ini ya.');
 
       Keranjang.items.clear();
+      itemSudahTerkirim.clear();
 
       if (!mounted) return;
       setState(() {
@@ -1751,6 +1805,12 @@ class _PaymentPageState extends State<PaymentPage> {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
                       child: Image.asset('file_000000001344820880218e311f8ddb40.png', width: 220),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      onPressed: simpanQris,
+                      icon: const Icon(Icons.download),
+                      label: const Text('Simpan QRIS ke Galeri'),
                     ),
                   ],
                 ),
