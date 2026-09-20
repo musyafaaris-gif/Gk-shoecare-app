@@ -1,5 +1,5 @@
-name: gk_shoecare_app
-description: App order cuci sepatu GK Shoecare
+name: gk_shoecare_admin
+description: App admin GK Shoecare - lihat pesanan masuk
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -10,23 +10,18 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.6
-  image_picker: ^1.1.2
   http: ^1.2.2
   shared_preferences: ^2.2.3
   url_launcher: ^6.3.1
-  geolocator: ^13.0.1
-  gal: ^2.3.0
+  pdf: ^3.11.1
+  printing: ^5.13.4
 
 dev_dependencies:
   flutter_launcher_icons: ^0.13.1
 
 flutter_launcher_icons:
   android: true
-  image_path: "assets/icon.png"
+  image_path: "assets/iconadmin.png"
 
 flutter:
   uses-material-design: true
-  assets:
-    - file_000000001344820880218e311f8ddb40.png
-    - assets/logo.png
-    - assets/icon.png
