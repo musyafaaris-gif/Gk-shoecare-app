@@ -719,6 +719,11 @@ class _TreatmentPageState extends State<TreatmentPage> {
       // lokasiId kosong = Harga Umum (dipakai GK Shop & GK Online), atau id lokasi
       // terpilih kalau channel-nya GK Clean Locker.
       final lokasiId = PesananContext.channel == 'locker' ? PesananContext.lokasiId : '';
+      // Query cuma filter jenisBarang di server. Filter lokasiId dilakukan manual
+      // di bawah (bukan di query Firestore), karena treatment lama yang dibuat
+      // sebelum fitur lokasi ada TIDAK punya field lokasiId sama sekali di database
+      // -- Firestore tidak menganggap dokumen tanpa field itu cocok dengan filter
+      // "lokasiId == ''", jadi treatment lama itu perlu tetap dianggap Harga Umum.
       final response = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
@@ -728,24 +733,10 @@ class _TreatmentPageState extends State<TreatmentPage> {
               {'collectionId': 'treatments'}
             ],
             'where': {
-              'compositeFilter': {
-                'op': 'AND',
-                'filters': [
-                  {
-                    'fieldFilter': {
-                      'field': {'fieldPath': 'jenisBarang'},
-                      'op': 'EQUAL',
-                      'value': {'stringValue': widget.jenisBarang}
-                    }
-                  },
-                  {
-                    'fieldFilter': {
-                      'field': {'fieldPath': 'lokasiId'},
-                      'op': 'EQUAL',
-                      'value': {'stringValue': lokasiId}
-                    }
-                  },
-                ]
+              'fieldFilter': {
+                'field': {'fieldPath': 'jenisBarang'},
+                'op': 'EQUAL',
+                'value': {'stringValue': widget.jenisBarang}
               }
             }
           }
@@ -757,8 +748,11 @@ class _TreatmentPageState extends State<TreatmentPage> {
         final fields = item['document']['fields'] as Map<String, dynamic>;
         String getString(String key) => fields[key]?['stringValue'] ?? '';
         int getInt(String key) => int.tryParse(fields[key]?['integerValue']?.toString() ?? '0') ?? 0;
-        return TreatmentOption(getString('nama'), getInt('harga'), getInt('estimasiHari'));
-      }).toList();
+        return (
+          treatment: TreatmentOption(getString('nama'), getInt('harga'), getInt('estimasiHari')),
+          lokasiIdTreatment: getString('lokasiId'),
+        );
+      }).where((t) => t.lokasiIdTreatment == lokasiId).map((t) => t.treatment).toList();
       hasil.sort((a, b) => a.nama.compareTo(b.nama));
       setState(() {
         daftarTreatment = hasil;
